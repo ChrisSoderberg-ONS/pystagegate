@@ -1,6 +1,5 @@
 import pandas as pd
 import pytest
-import os
 from pystagegate.pipelines import (
     prov_fin_main,
     sex_ratio_national_profile,
