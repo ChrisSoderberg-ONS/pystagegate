@@ -1,42 +1,25 @@
 import pandas as pd
 from itertools import product
-import os
-import json
-from pystagegate.validate import prov_fin_validate
 
 
-def load_summary_data(config: dict, dataset_key: str) -> pd.DataFrame:
-    """
-    Load and validate summary data from a CSV file.
+def filter_migration_data(migration_df: pd.DataFrame, key: str, config: dict):
+    variables = config["datasets"][key]["variables"]
+    migration_df = migration_df[
+        migration_df[variables["nationality"]]
+        == config["global_parameters"]["final_nationalities"][0]
+    ]
+    migration_df = migration_df[
+        migration_df[variables["year"]] == config["global_parameters"]["year"]
+    ]
 
-    Args:
-        config (dict): A dictionary configuration.
-        dataset (str): A string key value for the dataset to load.
-
-    Returns:
-        df (pd.DataFrame): A pandas DataFrame containing the selected data.
-    """
-    path = os.path.join(config["root_path"], config["datasets"][dataset_key]["path"])
-    variables = config["datasets"][dataset_key]["variables"]
-
-    df = pd.read_csv(path)[variables.values()]
-
-    validation_results = prov_fin_validate(df, dataset_key, config)
-
-    if config["output_path"] is not None:
-        if not os.path.exists(config["output_path"]):
-            os.makedirs(config["output_path"])
-
-        with open(
-            os.path.join(config["output_path"], f"{dataset_key}_validate.json"), "w"
-        ) as f:
-            json.dump(validation_results.to_json_dict(), f, indent=4)
-
-    return df
+    return migration_df
 
 
 def merge_final_migration_data(
-    immigration_df: pd.DataFrame, emigration_df: pd.DataFrame, config: dict
+    immigration_df: pd.DataFrame,
+    emigration_df: pd.DataFrame,
+    config: dict,
+    sex_ratio: bool = False,
 ) -> pd.DataFrame:
     """
     Merge immigration and emigration dataframes on specified columns and calculate net migration.
@@ -81,34 +64,56 @@ def merge_final_migration_data(
 
     merged_df["net_cell"] = merged_df[immigration_col] - merged_df[emigration_col]
 
-    merged_df = merged_df[
-        merged_df[left_vars["nationality"]]
-        == config["global_parameters"]["final_nationalities"][0]
-    ]
-    merged_df = merged_df[
-        merged_df[left_vars["year"]] == config["global_parameters"]["year"]
-    ]
-
-    merged_df = (
-        merged_df.groupby([left_vars["la_code"], left_vars["year"], left_vars["age"]])
-        .agg(
-            imm_fin=(immigration_col, "sum"),
-            em_fin=(emigration_col, "sum"),
-            net_fin=("net_cell", "sum"),
+    if sex_ratio:
+        # Alternative aggregation for sex_ratio calculations
+        merged_df = (
+            merged_df.groupby(
+                [
+                    left_vars["la_code"],
+                    left_vars["year"],
+                    left_vars["age"],
+                    left_vars["sex"],
+                ]
+            )
+            .agg(imm_fin=(immigration_col, "sum"), em_fin=(emigration_col, "sum"))
+            .reset_index()
         )
-        .reset_index()
-    )
 
-    return merged_df[
-        [
-            left_vars["year"],
-            left_vars["la_code"],
-            left_vars["age"],
-            "imm_fin",
-            "em_fin",
-            "net_fin",
+        return merged_df[
+            [
+                left_vars["year"],
+                left_vars["la_code"],
+                left_vars["age"],
+                left_vars["sex"],
+                "imm_fin",
+                "em_fin",
+            ]
         ]
-    ]
+
+    else:
+        # Default aggregation for combining with provisional data
+        merged_df = (
+            merged_df.groupby(
+                [left_vars["la_code"], left_vars["year"], left_vars["age"]]
+            )
+            .agg(
+                imm_fin=(immigration_col, "sum"),
+                em_fin=(emigration_col, "sum"),
+                net_fin=("net_cell", "sum"),
+            )
+            .reset_index()
+        )
+
+        return merged_df[
+            [
+                left_vars["year"],
+                left_vars["la_code"],
+                left_vars["age"],
+                "imm_fin",
+                "em_fin",
+                "net_fin",
+            ]
+        ]
 
 
 def subset_provisional_data(provisional_df: pd.DataFrame, config: dict) -> pd.DataFrame:
@@ -122,22 +127,10 @@ def subset_provisional_data(provisional_df: pd.DataFrame, config: dict) -> pd.Da
     Returns:
         subset_df (pd.DataFrame): A pandas DataFrame containing the subsetted and renamed data.
     """
-    year = config["global_parameters"]["year"]
     variables = config["datasets"]["provisional"]["variables"]
 
-    subset_df = pd.concat(
-        [
-            provisional_df.iloc[:, 0:3],
-            provisional_df.loc[
-                :,
-                [variables["immigration"], variables["emigration"], variables["net"]],
-            ],
-        ],
-        axis=1,
-    )
-
     subset_df = (
-        subset_df.groupby([variables["la_code"], variables["age"]])
+        provisional_df.groupby([variables["la_code"], variables["age"]])
         .agg(
             imm_prov=(variables["immigration"], "sum"),
             em_prov=(variables["emigration"], "sum"),
@@ -146,7 +139,7 @@ def subset_provisional_data(provisional_df: pd.DataFrame, config: dict) -> pd.Da
         .reset_index()
     )
 
-    subset_df["year"] = year
+    subset_df["year"] = config["global_parameters"]["year"]
 
     return subset_df[
         [
@@ -263,6 +256,7 @@ def squared_difference(
 
     Args:
         df (pd.DataFrame): The input migration DataFrame.
+        prefix (str): A string prefix used to name the computed squared difference column
         prov_col (str): The provisional estimate column name.
         fin_col (str): The final estimate column name.
 
@@ -282,7 +276,7 @@ def squared_difference(
     return df
 
 
-def regional_breakdown(
+def regional_breakdown_sqdiff(
     df: pd.DataFrame,
     config: dict,
     nation: str = None,

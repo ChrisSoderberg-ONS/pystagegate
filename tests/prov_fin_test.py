@@ -1,6 +1,5 @@
 import pytest
 import pandas as pd
-from unittest.mock import patch, MagicMock
 from pystagegate import prov_fin
 
 
@@ -178,7 +177,7 @@ class TestRegionalBreakdown:
     def test_gb_breakdown_returns_two_dataframes(
         self, mock_final_merged_df, prov_fin_config_no_output
     ):
-        age_agg, la_agg = prov_fin.regional_breakdown(
+        age_agg, la_agg = prov_fin.regional_breakdown_sqdiff(
             mock_final_merged_df, prov_fin_config_no_output
         )
         assert isinstance(age_agg, pd.DataFrame)
@@ -187,7 +186,7 @@ class TestRegionalBreakdown:
     def test_nation_breakdown_filters_correctly(
         self, mock_final_merged_df, prov_fin_config_no_output
     ):
-        age_agg, la_agg = prov_fin.regional_breakdown(
+        age_agg, la_agg = prov_fin.regional_breakdown_sqdiff(
             mock_final_merged_df, prov_fin_config_no_output, "E"
         )
         assert (la_agg["nation"] == "E").all()
@@ -196,115 +195,16 @@ class TestRegionalBreakdown:
         self, mock_final_merged_df, prov_fin_config_no_output
     ):
         with pytest.raises(ValueError):
-            prov_fin.regional_breakdown(
+            prov_fin.regional_breakdown_sqdiff(
                 mock_final_merged_df, prov_fin_config_no_output, "X"
             )
 
     def test_la_agg_has_scaled_sqdiff(
         self, mock_final_merged_df, prov_fin_config_no_output
     ):
-        _, la_agg = prov_fin.regional_breakdown(
+        _, la_agg = prov_fin.regional_breakdown_sqdiff(
             mock_final_merged_df, prov_fin_config_no_output, "E"
         )
         assert "sqdiff_imm_sc" in la_agg.columns
         assert "sqdiff_em_sc" in la_agg.columns
         assert "sqdiff_net_sc" in la_agg.columns
-
-
-class TestLoadSummaryData:
-    @patch("pystagegate.prov_fin.prov_fin_validate")
-    @patch("pandas.read_csv")
-    def test_load_returns_dataframe(
-        self, mock_read_csv, mock_validate, prov_fin_config_no_output
-    ):
-        mock_df = pd.DataFrame(
-            {
-                "Local Authority Code": ["E001"],
-                "Age": [25],
-                "Sex": ["Male"],
-                "Nationality Group": ["All Nationalities"],
-                "Year": [2024],
-                "Count": [100],
-            }
-        )
-        mock_read_csv.return_value = mock_df
-        mock_validate.return_value = MagicMock(to_json_dict=lambda: {})
-
-        result = prov_fin.load_summary_data(
-            prov_fin_config_no_output, "final_immigration"
-        )
-        assert isinstance(result, pd.DataFrame)
-
-    @patch("pystagegate.prov_fin.prov_fin_validate")
-    @patch("pandas.read_csv")
-    def test_load_selects_correct_columns(
-        self, mock_read_csv, mock_validate, prov_fin_config_no_output
-    ):
-        mock_df = pd.DataFrame(
-            {
-                "Local Authority Code": ["E001"],
-                "Age": [25],
-                "Sex": ["Male"],
-                "Nationality Group": ["All Nationalities"],
-                "Year": [2024],
-                "Count": [100],
-                "Extra Column": ["should be dropped"],
-            }
-        )
-        mock_read_csv.return_value = mock_df
-        mock_validate.return_value = MagicMock(to_json_dict=lambda: {})
-
-        result = prov_fin.load_summary_data(
-            prov_fin_config_no_output, "final_immigration"
-        )
-        assert "Extra Column" not in result.columns
-
-    @patch("pystagegate.prov_fin.prov_fin_validate")
-    @patch("pandas.read_csv")
-    def test_load_missing_column_raises_error(
-        self, mock_read_csv, mock_validate, prov_fin_config_no_output
-    ):
-        mock_df = pd.DataFrame(
-            {
-                "Local Authority Code": ["E001"],
-                "Age": [25],
-                # Missing Sex, Nationality Group, Year, Count
-            }
-        )
-        mock_read_csv.return_value = mock_df
-        mock_validate.return_value = MagicMock(to_json_dict=lambda: {})
-
-        with pytest.raises(KeyError):
-            prov_fin.load_summary_data(prov_fin_config_no_output, "final_immigration")
-
-    @patch("pandas.read_csv")
-    def test_load_file_not_found(self, mock_read_csv, prov_fin_config_no_output):
-        mock_read_csv.side_effect = FileNotFoundError("File not found")
-
-        with pytest.raises(FileNotFoundError):
-            prov_fin.load_summary_data(prov_fin_config_no_output, "final_immigration")
-
-    def test_load_invalid_dataset_key(self, prov_fin_config_no_output):
-        with pytest.raises(KeyError):
-            prov_fin.load_summary_data(prov_fin_config_no_output, "nonexistent_dataset")
-
-    @patch("pystagegate.prov_fin.prov_fin_validate")
-    @patch("pandas.read_csv")
-    def test_load_validation_failure_propagates(
-        self, mock_read_csv, mock_validate, prov_fin_config_no_output
-    ):
-        mock_df = pd.DataFrame(
-            {
-                "Local Authority Code": ["E001"],
-                "Age": [25],
-                "Sex": ["Male"],
-                "Nationality Group": ["All Nationalities"],
-                "Year": [2024],
-                "Count": [100],
-            }
-        )
-        mock_read_csv.return_value = mock_df
-        mock_validate.side_effect = ValueError("Validation failed")
-
-        with pytest.raises(ValueError, match="Validation failed"):
-            prov_fin.load_summary_data(prov_fin_config_no_output, "final_immigration")

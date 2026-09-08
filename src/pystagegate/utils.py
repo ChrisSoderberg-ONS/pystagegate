@@ -4,41 +4,60 @@ import pandas as pd
 import numpy as np
 import json
 import os
+from pystagegate.validate import validate
 
 
-def load_config(path: str) -> dict:
+def load_config(conf_id: str | dict) -> dict:
     """
     Load a JSON configuration file.
 
     Args:
-        path (str): The file path to the JSON file.
+        conf_id (str | dict): The file path to a JSON file or a dict object
 
     Returns:
-        config (dict): The loaded JSON configuration as a dictionary.
+        config (dict): Configuration dictionary.
     """
-    with open(path, "r") as f:
-        config = json.load(f)
-    return config
+    if type(conf_id) is str:
+        if os.path.exists(conf_id):
+            with open(conf_id, "r") as f:
+                config = json.load(f)
+            return config
+        else:
+            raise FileNotFoundError(f"Config file not found: {conf_id}")
+    elif type(conf_id) is dict:
+        return conf_id
+    else:
+        raise ValueError("Invalid config type. Must be str or dict.")
 
 
-def join_paths(root: str, paths: dict) -> dict:
+def load_summary_data(config: dict, dataset_key: str) -> pd.DataFrame:
     """
-    Join the folder root from the config to a dict of paths from the config
+    Load and validate summary data from a CSV file.
 
     Args:
-        root (str): The root value from the config.
-        paths (dict): A paths value from the config.
+        config (dict): A dictionary configuration.
+        dataset (str): A string key value for the dataset to load.
 
     Returns:
-        joined_paths (dict): A new dict with the joined root and path values.
+        df (pd.DataFrame): A pandas DataFrame containing the selected data.
     """
-    joined_paths = {}
+    path = os.path.join(config["root_path"], config["datasets"][dataset_key]["path"])
+    variables = config["datasets"][dataset_key]["variables"]
 
-    for key in paths:
-        joined_path = os.path.join(root, paths[key])
-        joined_paths.update({key: joined_path})
+    df = pd.read_csv(path)[variables.values()]
 
-    return joined_paths
+    validation_results = validate(df, dataset_key, config)
+
+    if config["output_path"] is not None:
+        if not os.path.exists(config["output_path"]):
+            os.makedirs(config["output_path"])
+
+        with open(
+            os.path.join(config["output_path"], f"{dataset_key}_validate.json"), "w"
+        ) as f:
+            json.dump(validation_results.to_json_dict(), f, indent=4)
+
+    return df
 
 
 def _generate_synth_df(df: pd.DataFrame, n: int) -> pd.DataFrame:
