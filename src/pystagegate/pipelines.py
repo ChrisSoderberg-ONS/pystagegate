@@ -81,7 +81,7 @@ def prov_fin_main(config: dict | str) -> pd.DataFrame:
             os.path.join(config["output_path"], "prov_fin_output.csv"), index=False
         )
 
-    return output.reset_index(drop=True)
+    return output
 
 
 def sex_ratio_national_profile(config: dict | str):
@@ -143,8 +143,8 @@ def sex_ratio_national_profile(config: dict | str):
 
     return (
         sq_diff_output,
-        year_agg.reset_index(drop=True),
-        year_agg_adjusted.reset_index(drop=True),
+        year_agg,
+        year_agg_adjusted,
     )
 
 
@@ -194,6 +194,10 @@ def sex_ratio_main(config: dict | str):
     # Year on year comparison squared difference for national vs local authority
     sr_merged = sex_ratio.sex_ratio_ssq(sr_recode, sr_national, config)
 
+    # Drop columns not needed for output
+    sr_recode.drop(columns=["em_fin_quality", "imm_fin_quality"], level=0, inplace=True)
+    sr_merged.drop(columns=["em_fin_quality", "imm_fin_quality"], level=0, inplace=True)
+
     # Write outputs
     if config["output_path"] is not None:
         if not os.path.exists(config["output_path"]):
@@ -206,7 +210,10 @@ def sex_ratio_main(config: dict | str):
         ]:
             pair[0].to_csv(
                 os.path.join(config["output_path"], pair[1]),
-                index_label=config["datasets"]["final_immigration"]["variables"]["la_code"],
+                index_label=config["datasets"]["final_immigration"]["variables"][
+                    "la_code"
+                ],
+                index=False,
             )
 
     return (
