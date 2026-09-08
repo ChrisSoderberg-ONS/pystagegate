@@ -1,20 +1,20 @@
 API Reference
 =============
 
-Provisional-Final
-_________________
+Provisional-Final analysis
+__________________________
 
 .. automodule:: pystagegate.prov_fin
     :members:
 
-Sex-Ratio module
-________________
+Sex Ratio analysis
+__________________
 
 .. automodule:: pystagegate.sex_ratio
     :members:
 
-Utils
-_____
+Utilities
+_________
 
 .. automodule:: pystagegate.utils
     :members:
